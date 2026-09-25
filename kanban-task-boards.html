@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Task boards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --lane:#E3E7EC; --ink:#1B2330; --muted:#5C6878; --line:#CDD4DC;
+  --todo:#7A8699; --doing:#D9901F; --done:#2A8C7E; --accent:#3446C9; --accent-ink:#fff;
+  --shadow:0 1px 0 rgba(27,35,48,.08); --tint:14%;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#141922; --surface:#1F2632; --lane:#1A202A; --ink:#E6EAF0; --muted:#98A3B3; --line:#2E3746;
+  --todo:#8C98AB; --doing:#E9A640; --done:#3DB3A2; --accent:#7F8CFF; --accent-ink:#0E1220;
+  --shadow:0 1px 0 rgba(0,0,0,.4); --tint:22%;
+}}
+:root[data-theme="dark"]{
+  --bg:#141922; --surface:#1F2632; --lane:#1A202A; --ink:#E6EAF0; --muted:#98A3B3; --line:#2E3746;
+  --todo:#8C98AB; --doing:#E9A640; --done:#3DB3A2; --accent:#7F8CFF; --accent-ink:#0E1220;
+  --shadow:0 1px 0 rgba(0,0,0,.4); --tint:22%;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Onest,"Segoe UI",system-ui,-apple-system,sans-serif}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.wrap{max-width:1240px;margin:0 auto;padding:24px 20px 60px}
+h1{font-size:28px;line-height:1.1;font-weight:700;margin:0;letter-spacing:-.01em}
+.sum{color:var(--muted);margin-top:6px}
+.btn{border:0;border-radius:8px;padding:9px 14px;background:var(--accent);color:var(--accent-ink);font-weight:600}
+.ghost{background:none;border:0;color:var(--muted);padding:4px 6px;border-radius:6px}
+.ghost:hover{color:var(--ink);background:var(--lane)}
+.field{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+
+/* boards */
+.boards{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:14px 0 4px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tab{flex:none;border:0;background:none;padding:8px 12px 10px;border-radius:8px 8px 0 0;color:var(--muted);font-weight:500;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.newboard{flex:none;display:flex;gap:6px;margin-left:6px}
+.newboard input{width:150px;padding:6px 10px}
+
+.bar-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}
+.btools{display:flex;gap:4px;align-items:center}
+.newgroup{display:flex;gap:8px}
+.newgroup input{width:220px;max-width:55vw}
+
+.colhead{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:8px 0 10px}
+.colhead div{display:flex;align-items:center;gap:8px;font-weight:600}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.st-todo{--c:var(--todo)} .st-doing{--c:var(--doing)} .st-done{--c:var(--done)}
+
+/* groups */
+.group{margin-bottom:26px;--g:var(--line)}
+.ghead{display:flex;align-items:center;gap:10px;padding:0 2px 8px;position:relative}
+.gmark{width:6px;align-self:stretch;min-height:22px;border-radius:3px;background:var(--g)}
+.group:not(.has-color) .gmark{background:transparent;border:1px dashed var(--line)}
+.gname{font-size:17px;font-weight:600;margin:0;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gcount{color:var(--muted);font-size:13px;white-space:nowrap}
+.bar{flex:1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--lane);min-width:40px}
+.bar span{height:100%;background:var(--c)}
+.gtools{display:flex;gap:2px}
+.lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.lane{background:var(--lane);border-radius:10px;padding:8px;min-height:84px;display:flex;flex-direction:column;gap:8px;border:2px solid transparent}
+.group.has-color .lane{background:color-mix(in srgb,var(--g) 9%,var(--lane));box-shadow:inset 0 3px 0 var(--g)}
+.lane.over{border-color:var(--accent)}
+.lane .mlabel{display:none}
+.collapsed .lanes{display:none}
+
+/* cards */
+.card{--k:var(--c);background:var(--surface);border-radius:8px;padding:10px 10px 8px 12px;box-shadow:var(--shadow);border-left:4px solid var(--line);cursor:grab;position:relative}
+.card.has-color{border-left-color:var(--k);background:color-mix(in srgb,var(--k) var(--tint),var(--surface))}
+.card.dragging{opacity:.4}
+.card .t{overflow-wrap:anywhere}
+.st-done .card .t{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.card .n{color:var(--muted);font-size:13px;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+.card .row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px;margin-top:6px}
+.card .row .ghost,.gtools .ghost{font-size:13px}
+.add{background:none;border:1px dashed var(--line);color:var(--muted);border-radius:8px;padding:7px;text-align:left}
+.add:hover{color:var(--ink);border-color:var(--muted)}
+.composer{display:flex;flex-direction:column;gap:6px}
+.composer textarea,.composer input{width:100%;border:1px solid var(--line);border-radius:6px;padding:7px 9px;background:var(--surface);resize:vertical}
+.composer .acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* swatches */
+.swatches{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.pop{position:absolute;z-index:20;right:0;top:100%;margin-top:4px}
+.sw{width:24px;height:24px;border-radius:50%;border:2px solid var(--surface);outline:1px solid var(--line);background:var(--s);padding:0}
+.sw[aria-pressed="true"]{outline:2px solid var(--ink)}
+.sw.none{background:linear-gradient(135deg,transparent 45%,var(--muted) 45% 55%,transparent 55%),var(--surface)}
+.inline-sw{display:flex;gap:5px;flex-wrap:wrap}
+.inline-sw .sw{width:20px;height:20px}
+
+.gedit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1;min-width:0}
+.gedit input{flex:1 1 200px;min-width:0;padding:6px 10px}
+.ask{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--ink)}
+.ask .yes{color:#fff;background:#C0392B;border-radius:6px;padding:3px 8px;border:0;font-size:13px}
+.rename-board{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rename-board input{padding:6px 10px}
+.empty{background:var(--surface);border-radius:12px;padding:40px 24px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font-size:18px;margin-bottom:6px}
+.foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:30px;padding-top:14px;border-top:1px solid var(--line)}
+.backup{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:14px}
+.backup .ghost{border:1px solid var(--line);padding:6px 12px}
+.status{font-size:13px;color:var(--muted);min-height:1.2em;text-align:right}
+
+@media (max-width:720px){
+  .colhead{display:none}
+  .lanes{grid-template-columns:1fr}
+  .lane .mlabel{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);padding:2px 2px 0}
+  .newgroup{width:100%} .newgroup input{flex:1;width:auto;max-width:none}
+  .ghead{flex-wrap:wrap} .bar{flex-basis:100%;order:5}
+}
+@media (prefers-reduced-motion:no-preference){ .card{transition:opacity .15s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Task boards</h1>
+  <div class="boards" id="boards" role="tablist" aria-label="Boards"></div>
+  <div id="top"></div>
+  <div class="colhead" id="colhead" aria-hidden="true">
+    <div class="st-todo"><span class="dot"></span>To do</div>
+    <div class="st-doing"><span class="dot"></span>In progress</div>
+    <div class="st-done"><span class="dot"></span>Done</div>
+  </div>
+  <main id="board"></main>
+  <footer class="foot">
+    <div class="backup" id="backup"></div>
+    <div class="status" id="status"></div>
+  </footer>
+  <input type="file" id="importfile" accept=".json,application/json" hidden>
+</div>
+<script>
+const COLS=[{id:'todo',name:'To do'},{id:'doing',name:'In progress'},{id:'done',name:'Done'}];
+const COLORS=[
+  {id:'red',hex:'#E5484D',name:'Red'},{id:'orange',hex:'#F76B15',name:'Orange'},{id:'yellow',hex:'#D6A400',name:'Yellow'},
+  {id:'green',hex:'#30A46C',name:'Green'},{id:'teal',hex:'#12A594',name:'Teal'},{id:'blue',hex:'#3E63DD',name:'Blue'},
+  {id:'purple',hex:'#8E4EC6',name:'Purple'},{id:'pink',hex:'#D6409F',name:'Pink'},{id:'grey',hex:'#8B8D98',name:'Grey'}];
+const hex=id=>(COLORS.find(c=>c.id===id)||{}).hex;
+
+let state={boards:[],groups:[],tasks:[],rev:0};
+let active=null; // per-device: which board is open
+let ref=null, saveTimer=null, saving=false, dirty=false;
+let pendingImport=null, downloads=null;
+let composer=null, editing=null, draftColor=null, boardEdit=false, boardRename=false, groupEdit=null, confirmDel=null;
+const $=s=>document.querySelector(s);
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function status(t){$('#status').textContent=t}
+
+/* ---------- data shape + migration ---------- */
+function normalize(d){
+  const s={boards:Array.isArray(d.boards)?d.boards:[],groups:Array.isArray(d.groups)?d.groups:[],tasks:Array.isArray(d.tasks)?d.tasks:[],rev:d.rev||0};
+  const orphan=s.groups.filter(g=>!g.boardId||!s.boards.some(b=>b.id===g.boardId));
+  if(orphan.length){
+    let b=s.boards[0]; if(!b){b={id:uid(),name:'My board'};s.boards.push(b)}
+    orphan.forEach(g=>g.boardId=b.id);
+  }
+  return s;
+}
+function ensureActive(){
+  if(!state.boards.some(b=>b.id===active)) active=state.boards[0]?.id||null;
+  try{localStorage.setItem('kanban-active',active||'')}catch(e){}
+}
+
+/* ---------- persistence ---------- */
+function loadLocal(){try{const r=localStorage.getItem('kanban-board');if(r)state=normalize(JSON.parse(r));active=localStorage.getItem('kanban-active')}catch(e){}}
+function saveLocal(){try{localStorage.setItem('kanban-board',JSON.stringify(state))}catch(e){}}
+function commit(){state.rev=Math.max(Date.now(),(state.rev||0)+1);render();saveLocal();dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(flush,700)}
+async function flush(){
+  if(!ref||saving||!dirty)return;
+  saving=true;dirty=false;status('Saving…');
+  try{await ref.set(JSON.parse(JSON.stringify(state)));status('Saved')}
+  catch(e){status(e&&e.code==='permission_denied'?'This board is read-only for you':'Changes kept on this device — sync failed')}
+  saving=false; if(dirty)flush();
+}
+loadLocal();render();
+(async()=>{
+  if(!window.claude||!window.claude.use){status('Saved on this device');return}
+  const db=await window.claude.use('db');
+  if(!db){status('Saved on this device');return}
+  ref=db.doc('board/main');
+  ref.onSnapshot(snap=>{
+    if(saving||dirty||(snap.metadata&&snap.metadata.hasPendingWrites))return;
+    const d=snap.exists?(typeof snap.data==='function'?snap.data():snap.data):null;
+    const localRev=state.rev||0, remoteRev=(d&&d.rev)||0;
+    if(d&&remoteRev>localRev){
+      const migrated=!Array.isArray(d.boards)||!d.boards.length;
+      state=normalize(d);saveLocal();render();status('Synced');
+      if(migrated&&state.boards.length){commit()}
+    }
+    else if((!d&&(state.boards.length||state.groups.length))||(d&&remoteRev<localRev)){dirty=true;flush()}
+  },()=>status('Live sync stopped — reload to reconnect'));
+})();
+
+/* ---------- helpers ---------- */
+function swatches(current,act,id){
+  return `<div class="swatches" role="group" aria-label="Choose colour">
+    <button class="sw none" data-act="${act}" data-id="${id||''}" data-color="" aria-pressed="${!current}" aria-label="No colour" title="No colour"></button>
+    ${COLORS.map(c=>`<button class="sw" style="--s:${c.hex}" data-act="${act}" data-id="${id||''}" data-color="${c.id}" aria-pressed="${current===c.id}" aria-label="${c.name}" title="${c.name}"></button>`).join('')}
+  </div>`;
+}
+function delBtn(kind,id,label){
+  if(confirmDel&&confirmDel.kind===kind&&confirmDel.id===id)
+    return `<span class="ask">${label}? <button class="yes" data-act="yes-del">Delete</button><button class="ghost" data-act="no-del">Keep</button></span>`;
+  return `<button class="ghost" data-act="ask-del" data-kind="${kind}" data-id="${id}" ${kind==='task'?'aria-label="Delete task"':''}>${kind==='task'?'✕':kind==='board'?'Delete board':'Delete'}</button>`;
+}
+function moveTask(id,status,groupId,beforeId){
+  const t=state.tasks.find(x=>x.id===id); if(!t)return;
+  state.tasks=state.tasks.filter(x=>x.id!==id);
+  t.status=status; if(groupId)t.groupId=groupId;
+  const idx=beforeId?state.tasks.findIndex(x=>x.id===beforeId):-1;
+  if(idx<0)state.tasks.push(t); else state.tasks.splice(idx,0,t);
+  commit();
+}
+
+/* ---------- render ---------- */
+function render(){
+  ensureActive();
+  renderBackup();
+  renderTabs();
+  const b=state.boards.find(x=>x.id===active);
+  const top=$('#top'), main=$('#board');
+  if(!b){
+    top.innerHTML='';$('#colhead').style.display='none';
+    main.innerHTML=`<div class="empty"><strong>No boards yet</strong>Create a board above — one per project, team or area of life.</div>`;
+    return;
+  }
+  const groups=state.groups.filter(g=>g.boardId===b.id);
+  const tasks=state.tasks.filter(t=>groups.some(g=>g.id===t.groupId));
+  const done=tasks.filter(t=>t.status==='done').length;
+  top.innerHTML=`<div class="bar-top">
+    <div>
+      <div class="sum">${tasks.length?`${done} of ${tasks.length} tasks done in ${groups.length} group${groups.length===1?'':'s'}`:'Group your work, then move tasks from left to right.'}</div>
+      <div class="btools">
+        ${boardRename?`<span class="rename-board"><input class="field" id="brename" value="${esc(b.name)}" aria-label="Board name" maxlength="60"><button class="btn" data-act="saverename">Save</button><button class="ghost" data-act="cancelrename">Cancel</button></span>`
+          :`<button class="ghost" data-act="renameboard">Rename board</button>${delBtn('board',b.id,'Delete this board and everything in it')}`}
+      </div>
+    </div>
+    <div class="newgroup">
+      <input class="field" id="gname" placeholder="New group name" aria-label="New group name" maxlength="80">
+      <button class="btn" data-act="addgroup">Add group</button>
+    </div>
+  </div>`;
+  $('#colhead').style.display=groups.length?'':'none';
+  if(!groups.length){
+    main.innerHTML=`<div class="empty"><strong>This board has no groups</strong>Add a group above — for example a feature, a sprint or a client.</div>`;
+    return;
+  }
+  main.innerHTML=groups.map(g=>{
+    const ts=state.tasks.filter(t=>t.groupId===g.id);
+    const c=s=>ts.filter(t=>t.status===s).length;
+    const bar=ts.length?COLS.map(k=>`<span class="st-${k.id}" style="width:${c(k.id)/ts.length*100}%"></span>`).join(''):'';
+    const gc=hex(g.color);
+    return `<section class="group${g.collapsed?' collapsed':''}${gc?' has-color':''}" data-g="${g.id}" ${gc?`style="--g:${gc}"`:''}>
+      <div class="ghead">
+        <button class="ghost" data-act="toggle" aria-expanded="${!g.collapsed}" aria-label="${g.collapsed?'Expand':'Collapse'} ${esc(g.name)}">${g.collapsed?'▸':'▾'}</button>
+        <span class="gmark"></span>
+        ${groupEdit===g.id?`<div class="gedit">
+          <input class="field gname-in" value="${esc(g.name)}" aria-label="Group name" maxlength="80">
+          <div class="inline-sw" role="group" aria-label="Group colour">
+            <button class="sw none" data-act="draftcolor" data-color="" aria-pressed="${!draftColor}" aria-label="No colour" title="No colour"></button>
+            ${COLORS.map(k=>`<button class="sw" style="--s:${k.hex}" data-act="draftcolor" data-color="${k.id}" aria-pressed="${draftColor===k.id}" aria-label="${k.name}" title="${k.name}"></button>`).join('')}
+          </div>
+          <button class="btn" data-act="save-group">Save</button><button class="ghost" data-act="cancel-group">Cancel</button>
+        </div>`:`
+        <h2 class="gname" title="${esc(g.name)}">${esc(g.name)}</h2>
+        <span class="gcount">${c('done')}/${ts.length}</span>
+        <div class="bar" role="img" aria-label="${c('todo')} to do, ${c('doing')} in progress, ${c('done')} done">${bar}</div>
+        <div class="gtools">
+          <button class="ghost" data-act="gedit">Edit</button>
+          ${delBtn('group',g.id,ts.length?`Delete group and ${ts.length} task${ts.length===1?'':'s'}`:'Delete group')}
+        </div>`}
+      </div>
+      <div class="lanes">${COLS.map(col=>lane(g,col,ts.filter(t=>t.status===col.id))).join('')}</div>
+    </section>`;
+  }).join('');
+  const ge=document.querySelector('.gname-in'); if(ge&&document.activeElement?.tagName!=='INPUT'){ge.focus();return}
+  const f=document.querySelector('.composer input'); if(f&&document.activeElement?.tagName!=='INPUT')f.focus();
+}
+function renderBackup(){
+  const el=$('#backup');
+  if(pendingImport){
+    const d=pendingImport,nt=d.tasks.length;
+    el.innerHTML=`<span class="ask">Replace everything here with the backup (${d.boards.length} board${d.boards.length===1?'':'s'}, ${nt} task${nt===1?'':'s'})? <button class="yes" data-act="import-yes">Replace</button><button class="ghost" data-act="import-no">Cancel</button></span>`;
+  }else{
+    el.innerHTML=`<button class="ghost" data-act="export">Export backup</button><button class="ghost" data-act="import">Import backup</button>`;
+  }
+}
+function exportName(){const d=new Date(),z=n=>String(n).padStart(2,'0');return `task-boards-${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}.json`}
+async function doExport(){
+  const data=JSON.stringify({app:'task-boards',version:1,exported:new Date().toISOString(),boards:state.boards,groups:state.groups,tasks:state.tasks},null,2);
+  const name=exportName();
+  if(window.claude&&window.claude.use){
+    if(!downloads)downloads=await window.claude.use('downloads');
+    if(downloads){
+      try{await downloads.save({filename:name,data});status('Backup saved')}
+      catch(e){status(e&&e.code==='declined'?'Export cancelled':'Export isn’t available here')}
+      return;
+    }
+  }
+  // standalone (local file): ordinary browser download
+  const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);status('Backup saved');
+}
+$('#importfile').addEventListener('change',async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f)return;
+  try{
+    const d=JSON.parse(await f.text());
+    if(!d||!Array.isArray(d.groups)||!Array.isArray(d.tasks))throw 0;
+    pendingImport=normalize(d); if(!pendingImport.boards.length)throw 0;
+    renderBackup();
+  }catch(err){status('That file isn’t a task board backup')}
+});
+function renderTabs(){
+  $('#boards').innerHTML=state.boards.map(b=>`<button class="tab" role="tab" data-act="openboard" data-id="${b.id}" aria-selected="${b.id===active}">${esc(b.name)}</button>`).join('')
+   +(boardEdit?`<div class="newboard"><input class="field" id="bname" placeholder="Board name" aria-label="Board name" maxlength="60"><button class="btn" data-act="saveboard">Create</button><button class="ghost" data-act="cancelboard">Cancel</button></div>`
+              :`<button class="tab" data-act="newboard">+ New board</button>`);
+  if(boardEdit){const i=$('#bname');i&&setTimeout(()=>i.focus())}
+}
+function lane(g,col,ts){
+  const isComp=composer&&composer.g===g.id&&col.id==='todo';
+  return `<div class="lane st-${col.id}" data-s="${col.id}" data-g="${g.id}">
+    <div class="mlabel"><span class="dot"></span>${col.name} · ${ts.length}</div>
+    ${ts.map(t=>editing===t.id?form(t.title,t.notes,'Save','save-edit',t.id):card(t,col)).join('')}
+    ${col.id!=='todo'?'':isComp?form('','','Add task','save-new'):`<button class="add" data-act="new">+ Add task</button>`}
+  </div>`;
+}
+function card(t,col){
+  const i=COLS.findIndex(c=>c.id===col.id), k=hex(t.color);
+  return `<article class="card${k?' has-color':''}" draggable="true" data-t="${t.id}" ${k?`style="--k:${k}"`:''}>
+    <div class="t">${esc(t.title)}</div>${t.notes?`<div class="n">${esc(t.notes)}</div>`:''}
+    <div class="row">
+      ${i>0?`<button class="ghost" data-act="left" aria-label="Move to ${COLS[i-1].name}">◂ ${COLS[i-1].name}</button>`:''}
+      ${i<2?`<button class="ghost" data-act="right" aria-label="Move to ${COLS[i+1].name}">${COLS[i+1].name} ▸</button>`:''}
+      <button class="ghost" data-act="edit">Edit</button>
+      ${delBtn('task',t.id,'Delete')}
+    </div>
+  </article>`;
+}
+function form(title,notes,label,act,id){
+  const cur=draftColor;
+  return `<div class="composer" ${id?`data-t="${id}"`:''}>
+    <input placeholder="Task title" value="${esc(title)}" maxlength="200" aria-label="Task title">
+    <textarea rows="2" placeholder="Notes (optional)" aria-label="Notes">${esc(notes)}</textarea>
+    <div class="inline-sw" role="group" aria-label="Task colour">
+      <button class="sw none" data-act="draftcolor" data-color="" aria-pressed="${!cur}" aria-label="No colour" title="No colour"></button>
+      ${COLORS.map(c=>`<button class="sw" style="--s:${c.hex}" data-act="draftcolor" data-color="${c.id}" aria-pressed="${cur===c.id}" aria-label="${c.name}" title="${c.name}"></button>`).join('')}
+    </div>
+    <div class="acts"><button class="btn" data-act="${act}">${label}</button><button class="ghost" data-act="cancel">Cancel</button></div>
+  </div>`;
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-act]');
+  if(!btn)return;
+  const act=btn.dataset.act, gid=btn.closest('.group')?.dataset.g;
+  const g=state.groups.find(x=>x.id===gid), laneEl=btn.closest('.lane'), cardEl=btn.closest('[data-t]');
+  const t=cardEl&&state.tasks.find(x=>x.id===cardEl.dataset.t);
+  const board=state.boards.find(x=>x.id===active);
+  if(!['yes-del','no-del','ask-del','draftcolor'].includes(act)&&confirmDel){confirmDel=null}
+
+  switch(act){
+  /* boards */
+  case 'openboard': active=btn.dataset.id;composer=editing=groupEdit=null;boardRename=false;render();break;
+  case 'newboard': boardEdit=true;render();break;
+  case 'cancelboard': boardEdit=false;render();break;
+  case 'saveboard': saveBoard();break;
+  case 'renameboard': boardRename=true;render();setTimeout(()=>{const i=$('#brename');i&&i.select()});break;
+  case 'cancelrename': boardRename=false;render();break;
+  case 'saverename': saveRename();break;
+  case 'ask-del': confirmDel={kind:btn.dataset.kind,id:btn.dataset.id};render();break;
+  case 'no-del': confirmDel=null;render();break;
+  case 'yes-del': doDelete();break;
+  case 'export': doExport();break;
+  case 'import': $('#importfile').click();break;
+  case 'import-no': pendingImport=null;renderBackup();break;
+  case 'import-yes': {const d=pendingImport;pendingImport=null;state={boards:d.boards,groups:d.groups,tasks:d.tasks,rev:state.rev};active=null;composer=editing=groupEdit=null;commit();status('Backup imported');break}
+  /* groups */
+  case 'addgroup': addGroup();break;
+  case 'toggle': g.collapsed=!g.collapsed;commit();break;
+  case 'gedit': groupEdit=gid;draftColor=g.color||null;composer=editing=null;render();break;
+  case 'cancel-group': groupEdit=null;render();break;
+  case 'save-group': saveGroup(btn.closest('.gedit'));break;
+  /* tasks */
+  case 'new': composer={g:laneEl.dataset.g};editing=groupEdit=null;draftColor=null;render();break;
+  case 'cancel': composer=null;editing=null;render();break;
+  case 'draftcolor': {
+    draftColor=btn.dataset.color||null;
+    btn.parentElement.querySelectorAll('.sw').forEach(s=>s.setAttribute('aria-pressed',String((s.dataset.color||null)===draftColor)));
+    break}
+  case 'save-new': case 'save-edit': submitForm(btn.closest('.composer'),act);break;
+  case 'left': case 'right': {const i=COLS.findIndex(c=>c.id===t.status);moveTask(t.id,COLS[i+(act==='left'?-1:1)].id);break}
+  case 'edit': editing=t.id;composer=groupEdit=null;draftColor=t.color||null;render();break;
+  }
+});
+function saveGroup(box){
+  const g=state.groups.find(x=>x.id===groupEdit); if(!g){groupEdit=null;render();return}
+  const n=box.querySelector('input').value.trim(); if(!n){box.querySelector('input').focus();return}
+  g.name=n; g.color=draftColor; groupEdit=null; commit();
+}
+function saveRename(){
+  const i=$('#brename'),n=i.value.trim(),b=state.boards.find(x=>x.id===active); if(!n){i.focus();return}
+  b.name=n; boardRename=false; commit();
+}
+function doDelete(){
+  const d=confirmDel; confirmDel=null; if(!d)return;
+  if(d.kind==='task') state.tasks=state.tasks.filter(x=>x.id!==d.id);
+  else if(d.kind==='group'){state.groups=state.groups.filter(x=>x.id!==d.id);state.tasks=state.tasks.filter(x=>x.groupId!==d.id)}
+  else if(d.kind==='board'){
+    const gs=state.groups.filter(x=>x.boardId===d.id).map(x=>x.id);
+    state.boards=state.boards.filter(x=>x.id!==d.id);
+    state.groups=state.groups.filter(x=>x.boardId!==d.id);
+    state.tasks=state.tasks.filter(x=>!gs.includes(x.groupId));
+    active=null;
+  }
+  commit();
+}
+function saveBoard(){
+  const i=$('#bname'),n=i.value.trim(); if(!n){i.focus();return}
+  const b={id:uid(),name:n}; state.boards.push(b); active=b.id; boardEdit=false; commit();
+}
+function addGroup(){
+  const i=$('#gname'),n=i.value.trim(); if(!n){i.focus();return}
+  state.groups.push({id:uid(),boardId:active,name:n,color:null,collapsed:false}); commit();
+  setTimeout(()=>$('#gname')&&$('#gname').focus());
+}
+function submitForm(f,act){
+  const title=f.querySelector('input').value.trim(), notes=f.querySelector('textarea').value.trim();
+  if(!title){f.querySelector('input').focus();return}
+  if(act==='save-new'){
+    const l=f.closest('.lane');
+    state.tasks.push({id:uid(),groupId:l.dataset.g,status:'todo',title,notes,color:draftColor,created:Date.now()});
+    composer={g:l.dataset.g}; // stays open for quick entry, keeps the chosen colour
+  }else{
+    const t=state.tasks.find(x=>x.id===f.dataset.t); if(t){t.title=title;t.notes=notes;t.color=draftColor} editing=null;
+  }
+  commit();
+  const inp=document.querySelector('.composer input'); inp&&inp.focus();
+}
+document.addEventListener('keydown',e=>{
+  if(e.target.classList&&e.target.classList.contains('gname-in')){ if(e.key==='Enter'){e.preventDefault();saveGroup(e.target.closest('.gedit'))} else if(e.key==='Escape'){groupEdit=null;render()} return }
+  if(e.target.id==='brename'){ if(e.key==='Enter'){e.preventDefault();saveRename()} else if(e.key==='Escape'){boardRename=false;render()} return }
+  if(e.key==='Escape'&&confirmDel){confirmDel=null;render();return}
+  if(e.target.id==='gname'&&e.key==='Enter'){e.preventDefault();addGroup();return}
+  if(e.target.id==='bname'){ if(e.key==='Enter'){e.preventDefault();saveBoard()} else if(e.key==='Escape'){boardEdit=false;render()} return }
+  const f=e.target.closest&&e.target.closest('.composer'); if(!f)return;
+  if(e.key==='Escape'){composer=null;editing=null;render()}
+  else if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();submitForm(f,f.dataset.t?'save-edit':'save-new')}
+});
+
+/* drag & drop */
+let dragId=null;
+const B=$('#board');
+B.addEventListener('dragstart',e=>{const c=e.target.closest('.card');if(!c)return;dragId=c.dataset.t;c.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragId)});
+B.addEventListener('dragend',()=>{dragId=null;document.querySelectorAll('.dragging,.over').forEach(x=>x.classList.remove('dragging','over'))});
+B.addEventListener('dragover',e=>{const l=e.target.closest('.lane');if(!l||!dragId)return;e.preventDefault();document.querySelectorAll('.over').forEach(x=>x!==l&&x.classList.remove('over'));l.classList.add('over')});
+B.addEventListener('drop',e=>{
+  const l=e.target.closest('.lane');if(!l||!dragId)return;e.preventDefault();
+  const cards=[...l.querySelectorAll('.card')].filter(c=>c.dataset.t!==dragId);
+  const before=cards.find(c=>{const r=c.getBoundingClientRect();return e.clientY<r.top+r.height/2});
+  const id=dragId;dragId=null;moveTask(id,l.dataset.s,l.dataset.g,before&&before.dataset.t);
+});
+</script>
+</body>
+</html>
