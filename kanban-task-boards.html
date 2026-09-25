@@ -159,12 +159,26 @@ function status(t){$('#status').textContent=t}
 
 /* ---------- data shape + migration ---------- */
 function normalize(d){
-  const s={boards:Array.isArray(d.boards)?d.boards:[],groups:Array.isArray(d.groups)?d.groups:[],tasks:Array.isArray(d.tasks)?d.tasks:[],rev:d.rev||0};
+  // Treat all stored or imported data as untrusted: rebuild every record from known fields only.
+  d=(d&&typeof d==='object')?d:{};
+  const arr=x=>Array.isArray(x)?x.filter(v=>v&&typeof v==='object'):[];
+  const ID=/^[A-Za-z0-9_-]{1,64}$/, map=new Map();
+  const cid=v=>{const k=String(v??'');if(ID.test(k))return k;if(!map.has(k))map.set(k,uid());return map.get(k)};
+  const str=(v,max)=>String(v??'').slice(0,max);
+  const col=v=>COLORS.some(c=>c.id===v)?v:null;
+  const STATUSES=['todo','doing','done'];
+  const s={
+    boards:arr(d.boards).map(b=>({id:cid(b.id),name:str(b.name,60).trim()||'Untitled board'})),
+    groups:arr(d.groups).map(g=>({id:cid(g.id),boardId:g.boardId==null?null:cid(g.boardId),name:str(g.name,80).trim()||'Untitled group',color:col(g.color),collapsed:g.collapsed===true})),
+    tasks:arr(d.tasks).map(t=>({id:cid(t.id),groupId:cid(t.groupId),status:STATUSES.includes(t.status)?t.status:'todo',title:str(t.title,200).trim()||'Untitled task',notes:str(t.notes,5000),color:col(t.color),created:Number.isFinite(t.created)?t.created:Date.now()})),
+    rev:Number.isFinite(d.rev)?d.rev:0
+  };
   const orphan=s.groups.filter(g=>!g.boardId||!s.boards.some(b=>b.id===g.boardId));
   if(orphan.length){
     let b=s.boards[0]; if(!b){b={id:uid(),name:'My board'};s.boards.push(b)}
     orphan.forEach(g=>g.boardId=b.id);
   }
+  s.tasks=s.tasks.filter(t=>s.groups.some(g=>g.id===t.groupId));
   return s;
 }
 function ensureActive(){
@@ -212,7 +226,7 @@ function swatches(current,act,id){
 function delBtn(kind,id,label){
   if(confirmDel&&confirmDel.kind===kind&&confirmDel.id===id)
     return `<span class="ask">${label}? <button class="yes" data-act="yes-del">Delete</button><button class="ghost" data-act="no-del">Keep</button></span>`;
-  return `<button class="ghost" data-act="ask-del" data-kind="${kind}" data-id="${id}" ${kind==='task'?'aria-label="Delete task"':''}>${kind==='task'?'✕':kind==='board'?'Delete board':'Delete'}</button>`;
+  return `<button class="ghost" data-act="ask-del" data-kind="${kind}" data-id="${esc(id)}" ${kind==='task'?'aria-label="Delete task"':''}>${kind==='task'?'✕':kind==='board'?'Delete board':'Delete'}</button>`;
 }
 function moveTask(id,status,groupId,beforeId){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
@@ -261,7 +275,7 @@ function render(){
     const c=s=>ts.filter(t=>t.status===s).length;
     const bar=ts.length?COLS.map(k=>`<span class="st-${k.id}" style="width:${c(k.id)/ts.length*100}%"></span>`).join(''):'';
     const gc=hex(g.color);
-    return `<section class="group${g.collapsed?' collapsed':''}${gc?' has-color':''}" data-g="${g.id}" ${gc?`style="--g:${gc}"`:''}>
+    return `<section class="group${g.collapsed?' collapsed':''}${gc?' has-color':''}" data-g="${esc(g.id)}" ${gc?`style="--g:${gc}"`:''}>
       <div class="ghead">
         <button class="ghost" data-act="toggle" aria-expanded="${!g.collapsed}" aria-label="${g.collapsed?'Expand':'Collapse'} ${esc(g.name)}">${g.collapsed?'▸':'▾'}</button>
         <span class="gmark"></span>
@@ -323,14 +337,14 @@ $('#importfile').addEventListener('change',async e=>{
   }catch(err){status('That file isn’t a task board backup')}
 });
 function renderTabs(){
-  $('#boards').innerHTML=state.boards.map(b=>`<button class="tab" role="tab" data-act="openboard" data-id="${b.id}" aria-selected="${b.id===active}">${esc(b.name)}</button>`).join('')
+  $('#boards').innerHTML=state.boards.map(b=>`<button class="tab" role="tab" data-act="openboard" data-id="${esc(b.id)}" aria-selected="${b.id===active}">${esc(b.name)}</button>`).join('')
    +(boardEdit?`<div class="newboard"><input class="field" id="bname" placeholder="Board name" aria-label="Board name" maxlength="60"><button class="btn" data-act="saveboard">Create</button><button class="ghost" data-act="cancelboard">Cancel</button></div>`
               :`<button class="tab" data-act="newboard">+ New board</button>`);
   if(boardEdit){const i=$('#bname');i&&setTimeout(()=>i.focus())}
 }
 function lane(g,col,ts){
   const isComp=composer&&composer.g===g.id&&col.id==='todo';
-  return `<div class="lane st-${col.id}" data-s="${col.id}" data-g="${g.id}">
+  return `<div class="lane st-${col.id}" data-s="${col.id}" data-g="${esc(g.id)}">
     <div class="mlabel"><span class="dot"></span>${col.name} · ${ts.length}</div>
     ${ts.map(t=>editing===t.id?form(t.title,t.notes,'Save','save-edit',t.id):card(t,col)).join('')}
     ${col.id!=='todo'?'':isComp?form('','','Add task','save-new'):`<button class="add" data-act="new">+ Add task</button>`}
@@ -338,7 +352,7 @@ function lane(g,col,ts){
 }
 function card(t,col){
   const i=COLS.findIndex(c=>c.id===col.id), k=hex(t.color);
-  return `<article class="card${k?' has-color':''}" draggable="true" data-t="${t.id}" ${k?`style="--k:${k}"`:''}>
+  return `<article class="card${k?' has-color':''}" draggable="true" data-t="${esc(t.id)}" ${k?`style="--k:${k}"`:''}>
     <div class="t">${esc(t.title)}</div>${t.notes?`<div class="n">${esc(t.notes)}</div>`:''}
     <div class="row">
       ${i>0?`<button class="ghost" data-act="left" aria-label="Move to ${COLS[i-1].name}">◂ ${COLS[i-1].name}</button>`:''}
@@ -350,7 +364,7 @@ function card(t,col){
 }
 function form(title,notes,label,act,id){
   const cur=draftColor;
-  return `<div class="composer" ${id?`data-t="${id}"`:''}>
+  return `<div class="composer" ${id?`data-t="${esc(id)}"`:''}>
     <input placeholder="Task title" value="${esc(title)}" maxlength="200" aria-label="Task title">
     <textarea rows="2" placeholder="Notes (optional)" aria-label="Notes">${esc(notes)}</textarea>
     <div class="inline-sw" role="group" aria-label="Task colour">
